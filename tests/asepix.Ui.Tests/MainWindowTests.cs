@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.VisualTree;
 using Avalonia.Headless;
 using Avalonia.Media.Imaging;
 using Avalonia.Headless.XUnit;
@@ -54,6 +55,87 @@ public class MainWindowTests
         Assert.True(window.GetControl<Button>("SaveButton").IsEnabled);
         Assert.Equal("art.png", window.GetControl<TextBlock>("HeaderText").Text);
         Assert.Contains("24×18", window.GetControl<TextBlock>("ResultCaption").Text);
+    }
+
+    /// <summary>
+    /// The tileset case: a 2x2 sheet detected at a lopsided 24x18, whose every tile must come
+    /// out 6x6, giving a square 12x12 sheet. Converting again must reuse the image already
+    /// open — the stream is long gone by then.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Setting_ATileSize_RedrawsEveryTileOfTheOpenSheetAtThatSize()
+    {
+        var window = new MainWindow();
+        window.Show();
+
+        await window.LoadAsync(SyntheticArt(), "art.png");
+
+        window.GetControl<NumericUpDown>("SheetTilesInput").Value = 2;
+        window.GetControl<NumericUpDown>("TileSizeInput").Value = 6;
+
+        await window.ConvertAsync();
+
+        var result = window.GetControl<ImageControl>("ResultImage");
+        var status = window.GetControl<TextBlock>("StatusText").Text;
+
+        var bitmap = Assert.IsType<Bitmap>(result.Source);
+
+        Assert.True(new PixelSize(12, 12) == bitmap.PixelSize, $"got {bitmap.PixelSize}; status: {status}");
+        Assert.Contains("12×12", window.GetControl<TextBlock>("ResultCaption").Text);
+        Assert.True(window.GetControl<Button>("SaveButton").IsEnabled);
+    }
+
+    /// <summary>
+    /// Converting used to disable the size boxes, which dropped the focus on every keystroke
+    /// and made the user click back into the box to type the next digit.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Typing_ASize_KeepsTheFocusInTheBox()
+    {
+        var window = new MainWindow();
+        window.Show();
+
+        await window.LoadAsync(SyntheticArt(), "art.png");
+
+        var input = window.GetControl<NumericUpDown>("TileSizeInput");
+
+        input.Focus();
+        Assert.True(input.IsKeyboardFocusWithin, "the box never took focus to begin with");
+
+        input.Value = 1;
+        await window.ConvertAsync();
+        input.Value = 12;
+        await window.ConvertAsync();
+
+        Assert.True(input.IsKeyboardFocusWithin, "focus left the box while converting");
+        Assert.True(input.IsEnabled, "the box was left disabled");
+    }
+
+    /// <summary>
+    /// The spinner buttons used to claim the whole control, leaving a text field a few pixels
+    /// wide with no room to type a size into.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_SizeInputs_HaveRoomToTypeIn()
+    {
+        var window = new MainWindow();
+        window.Show();
+
+        window.Measure(new Avalonia.Size(1040, 680));
+        window.Arrange(new Rect(0, 0, 1040, 680));
+
+        string[] inputs = ["SheetTilesInput", "TileSizeInput"];
+
+        foreach (var name in inputs)
+        {
+            var field = window
+                .GetControl<NumericUpDown>(name)
+                .GetVisualDescendants()
+                .OfType<TextBox>()
+                .Single();
+
+            Assert.True(field.Bounds.Width >= 40, $"{name}: text field is {field.Bounds.Width}px");
+        }
     }
 
     [AvaloniaFact]

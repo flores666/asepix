@@ -12,7 +12,10 @@ namespace asepix.Ui;
 
 public partial class MainWindow : Window
 {
+    private PixelArt? source;
     private PixelArt? result;
+    private Task? conversion;
+    private bool queued;
     private string sourceName = "pixel-art";
 
     private readonly string? initialFile;
@@ -112,6 +115,9 @@ public partial class MainWindow : Window
         await LoadAsync(stream, file.Name);
     }
 
+    private async void OnLayoutChanged(object? sender, NumericUpDownValueChangedEventArgs e) =>
+        await ConvertAsync();
+
     /// <summary>
     /// The whole open-and-convert path, driven by a stream so it can run without a picker.
     /// </summary>
@@ -122,35 +128,101 @@ public partial class MainWindow : Window
 
         try
         {
-            using (var source = await SharpImage.LoadAsync<Rgba32>(stream))
-            {
-                SourceImage.Source = ToBitmap(source);
-                SourceCaption.Text = $"Оригинал — {source.Width}×{source.Height}";
+            var loaded = await SharpImage.LoadAsync<Rgba32>(stream);
 
-                // Detection and voting take about a second on a large image; the UI thread
-                // must not be the one doing it.
-                var converted = await Task.Run(
-                    () => ImageConverter.ToPixelArt(source, new ConversionOptions())
-                );
+            // Kept open: changing the tile size reconverts, and re-reading the stream is
+            // not an option once the picker handed it over.
+            source?.Dispose();
+            source = loaded;
 
-                result?.Dispose();
-                result = converted;
-            }
-
-            ResultImage.Source = ToBitmap(result);
-            ResultCaption.Text = $"Пиксель-арт — {result.Width}×{result.Height}";
+            SourceImage.Source = ToBitmap(source);
+            SourceCaption.Text = $"Оригинал — {source.Width}×{source.Height}";
 
             sourceName = Path.GetFileNameWithoutExtension(name);
             HeaderText.Text = name;
-            StatusText.Text = $"Сетка определена автоматически: {result.Width}×{result.Height}, палитра 8 цветов.";
-
-            SetBusy(false);
-            SaveButton.IsEnabled = true;
         }
         catch (Exception exception)
         {
             SetBusy(false);
             StatusText.Text = Describe(exception);
+            return;
+        }
+
+        await ConvertAsync();
+    }
+
+    /// <summary>Converts the image already open, at whatever tile size is set now.</summary>
+    /// <remarks>
+    /// Every keystroke in a size box asks for a conversion. Disabling the boxes while one runs
+    /// would pull the focus out from under the typing, so they stay live and a request that
+    /// arrives mid-run is folded into a single re-run once the current one finishes.
+    /// </remarks>
+    internal Task ConvertAsync()
+    {
+        // Awaiting the call always means "settled", whether it started the work or joined it.
+        if (conversion is { } running)
+        {
+            queued = true;
+            return running;
+        }
+
+        return conversion = DrainAsync();
+    }
+
+    private async Task DrainAsync()
+    {
+        try
+        {
+            do
+            {
+                queued = false;
+                await ConvertOnceAsync();
+            } while (queued);
+        }
+        finally
+        {
+            conversion = null;
+        }
+    }
+
+    private async Task ConvertOnceAsync()
+    {
+        if (source is not { } image)
+            return;
+
+        SetBusy(true);
+        SaveButton.IsEnabled = false;
+        StatusText.Text = "Обработка…";
+
+        try
+        {
+            var options = new ConversionOptions(
+                SheetTiles: (int?)SheetTilesInput.Value ?? 1,
+                TileSize: (int?)TileSizeInput.Value
+            );
+
+            // Detection and voting take about a second on a large image; the UI thread
+            // must not be the one doing it.
+            var converted = await Task.Run(() => ImageConverter.ToPixelArt(image, options));
+
+            result?.Dispose();
+            result = converted;
+
+            ResultImage.Source = ToBitmap(result);
+            ResultCaption.Text = $"Пиксель-арт — {result.Width}×{result.Height}";
+            StatusText.Text = options.TileSize is int tile
+                ? $"Лист {options.SheetTiles}×{options.SheetTiles} тайлов по {tile}×{tile} — итог {result.Width}×{result.Height}, палитра 8 цветов."
+                : $"Сетка определена автоматически: {result.Width}×{result.Height}, палитра 8 цветов.";
+
+            SaveButton.IsEnabled = true;
+        }
+        catch (Exception exception)
+        {
+            StatusText.Text = Describe(exception);
+        }
+        finally
+        {
+            SetBusy(false);
         }
     }
 

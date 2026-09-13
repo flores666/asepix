@@ -83,6 +83,115 @@ public class ImageConverterTests
         Assert.True(distinct.Count <= Palette.Length, $"got {distinct.Count} colours");
     }
 
+    /// <summary>
+    /// The game-asset case: the art on screen is a 32x32 grid, the game wants a 16x16 tile.
+    /// Every 2x2 block here is one colour, so the shrunk tile must be that block art exactly —
+    /// no blended in-between colours, no half-dropped pixels.
+    /// </summary>
+    [Fact]
+    public void ToPixelArt_ShrinksTheDetectedGridToTheRequestedTileSize()
+    {
+        var blocks = BuildArt(16, 16, seed: 42);
+        var art = Enlarge(blocks, 16, 16, factor: 2);
+
+        using var upscaled = Upscale(art, 32, 32, 9.7);
+        using var recovered = ImageConverter.ToPixelArt(
+            upscaled,
+            new ConversionOptions(TileSize: 16, Colors: Palette.Length)
+        );
+
+        Assert.Equal(16, recovered.Width);
+        Assert.Equal(16, recovered.Height);
+        AssertMatchesArt(blocks, recovered);
+    }
+
+    /// <summary>A tile larger than the art repeats whole pixels rather than interpolating.</summary>
+    [Fact]
+    public void ToPixelArt_GrowsTheDetectedGridByRepeatingPixels()
+    {
+        var art = BuildArt(16, 16, seed: 8);
+
+        using var upscaled = Upscale(art, 16, 16, 18.4);
+        using var recovered = ImageConverter.ToPixelArt(
+            upscaled,
+            new ConversionOptions(TileSize: 32, Colors: Palette.Length)
+        );
+
+        Assert.Equal(32, recovered.Width);
+        Assert.Equal(32, recovered.Height);
+        AssertMatchesArt(Enlarge(art, 16, 16, factor: 2), recovered);
+    }
+
+    /// <summary>
+    /// A tileset: 2x2 tiles of 11x11 art, each tile painted from its own pair of colours, resized
+    /// to 7x7 tiles. 22 cells do not divide into 14 output pixels, so this is exactly where a
+    /// naive resize would drag a neighbour's art across a tile boundary — every output tile
+    /// must still hold only the colours of the tile it came from.
+    /// </summary>
+    [Fact]
+    public void ToPixelArt_ResizesEachTileOfASheet_WithoutBleedingAcrossTileBoundaries()
+    {
+        const int tile = 11,
+            resized = 7;
+
+        var art = BuildSheet(tile, seed: 21);
+
+        using var upscaled = Upscale(art, 2 * tile, 2 * tile, 12.4);
+        using var recovered = ImageConverter.ToPixelArt(
+            upscaled,
+            new ConversionOptions(SheetTiles: 2, TileSize: resized, Colors: 8)
+        );
+
+        Assert.Equal(2 * resized, recovered.Width);
+        Assert.Equal(2 * resized, recovered.Height);
+
+        recovered.ProcessPixelRows(accessor =>
+        {
+            for (var y = 0; y < accessor.Height; y++)
+            {
+                var row = accessor.GetRowSpan(y);
+
+                for (var x = 0; x < row.Length; x++)
+                {
+                    var owner = TileOf(x / resized, y / resized);
+                    var actual = Nearest(row[x], SheetPalette);
+
+                    Assert.True(
+                        owner.Contains(actual),
+                        $"pixel ({x},{y}) shows {row[x]} (nearest {actual}), which belongs to another tile"
+                    );
+                }
+            }
+        });
+    }
+
+    [Fact]
+    public void Validate_RejectsAnEmptySheet()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => new ConversionOptions(SheetTiles: 0).Validate()
+        );
+    }
+
+    /// <summary>
+    /// Tiles are square whatever the source was: a lopsided detected grid — the usual case,
+    /// a sheet is rarely cropped to the exact pixel — still has to come out NxN.
+    /// </summary>
+    [Fact]
+    public void ToPixelArt_GivesSquareTiles_FromANonSquareGrid()
+    {
+        var art = BuildArt(20, 14, seed: 3);
+
+        using var upscaled = Upscale(art, 20, 14, 13.6);
+        using var recovered = ImageConverter.ToPixelArt(
+            upscaled,
+            new ConversionOptions(TileSize: 10, Colors: Palette.Length)
+        );
+
+        Assert.Equal(10, recovered.Width);
+        Assert.Equal(10, recovered.Height);
+    }
+
     [Fact]
     public void DefaultOptions_AreUsable()
     {
@@ -105,11 +214,51 @@ public class ImageConverterTests
     }
 
     [Fact]
+    public void Validate_RejectsAnEmptyTile()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => new ConversionOptions(TileSize: 0).Validate()
+        );
+    }
+
+    [Fact]
     public void Validate_RejectsAnInsetThatWouldLeaveNothingToSample()
     {
         Assert.Throws<ArgumentOutOfRangeException>(
             () => new ConversionOptions(Inset: 0.5).Validate()
         );
+    }
+
+    /// <summary>Eight colours, two per tile, so a tile's own art is identifiable in the output.</summary>
+    private static readonly Rgba32[] SheetPalette =
+    [
+        new(20, 20, 28),
+        new(60, 60, 76),
+        new(150, 40, 40),
+        new(220, 120, 100),
+        new(30, 110, 60),
+        new(120, 200, 140),
+        new(40, 70, 160),
+        new(120, 160, 240),
+    ];
+
+    /// <summary>The two palette entries painting the tile at that position of a 2x2 sheet.</summary>
+    private static ReadOnlySpan<Rgba32> TileOf(int column, int row) =>
+        SheetPalette.AsSpan((row * 2 + column) * 2, 2);
+
+    /// <summary>A 2x2 sheet of square tiles, each textured from its own pair of colours.</summary>
+    private static Rgba32[] BuildSheet(int tile, int seed)
+    {
+        var random = new Random(seed);
+        var art = new Rgba32[4 * tile * tile];
+
+        for (var y = 0; y < 2 * tile; y++)
+        {
+            for (var x = 0; x < 2 * tile; x++)
+                art[y * 2 * tile + x] = TileOf(x / tile, y / tile)[random.Next(2)];
+        }
+
+        return art;
     }
 
     private static Rgba32[] BuildArt(int width, int height, int seed)
@@ -121,6 +270,20 @@ public class ImageConverterTests
             art[i] = Palette[random.Next(Palette.Length)];
 
         return art;
+    }
+
+    /// <summary>Repeats every art pixel into a <paramref name="factor"/>-square block.</summary>
+    private static Rgba32[] Enlarge(Rgba32[] art, int width, int height, int factor)
+    {
+        var enlarged = new Rgba32[width * factor * height * factor];
+
+        for (var y = 0; y < height * factor; y++)
+        {
+            for (var x = 0; x < width * factor; x++)
+                enlarged[y * width * factor + x] = art[y / factor * width + x / factor];
+        }
+
+        return enlarged;
     }
 
     /// <summary>Blows the art up by a fractional factor, smoothing edges the way a generator does.</summary>
@@ -165,12 +328,14 @@ public class ImageConverterTests
     /// Quantisation picks its own representative colours, so compare by nearest palette
     /// entry rather than demanding byte-identical output.
     /// </summary>
-    private static Rgba32 Nearest(Rgba32 colour)
+    private static Rgba32 Nearest(Rgba32 colour) => Nearest(colour, Palette);
+
+    private static Rgba32 Nearest(Rgba32 colour, ReadOnlySpan<Rgba32> palette)
     {
-        var best = Palette[0];
+        var best = palette[0];
         var bestDistance = int.MaxValue;
 
-        foreach (var candidate in Palette)
+        foreach (var candidate in palette)
         {
             int dr = candidate.R - colour.R,
                 dg = candidate.G - colour.G,

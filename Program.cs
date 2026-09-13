@@ -11,7 +11,9 @@ if (args.Length == 0 || args[0] is "-h" or "--help")
           asepix <input> [options]
 
           -o, --output <path>  Output file (default: <input>_converted.png)
-              --grid <W>x<H>   Output grid size; detected from the image when omitted
+              --grid <W>x<H>   Grid read out of the source; detected from the image when omitted
+              --sheet <n>      Tiles along each side of the sheet (default: 1)
+              --tile <n>       Side of one tile in pixels; every tile is rescaled to it
               --colors <n>     Palette size, 2-256 (default: 8)
               --inset <f>      Cell fraction trimmed before voting, 0-0.49 (default: 0.25)
         """
@@ -37,6 +39,12 @@ try
             case "--grid":
                 var (gridWidth, gridHeight) = ParseGrid(Next(args, ref i));
                 options = options with { GridWidth = gridWidth, GridHeight = gridHeight };
+                break;
+            case "--sheet":
+                options = options with { SheetTiles = ParseCount("--sheet", Next(args, ref i)) };
+                break;
+            case "--tile":
+                options = options with { TileSize = ParseCount("--tile", Next(args, ref i)) };
                 break;
             case "--colors":
                 options = options with { Colors = int.Parse(Next(args, ref i)) };
@@ -82,6 +90,11 @@ static string DefaultOutput(string input) =>
         Path.GetDirectoryName(input) ?? string.Empty,
         Path.GetFileNameWithoutExtension(input) + "_converted.png"
     );
+
+static int ParseCount(string option, string value) =>
+    int.TryParse(value, out var count)
+        ? count
+        : throw new ArgumentException($"{option} takes one number — tiles are square. Got \"{value}\".");
 
 static (int Width, int Height) ParseGrid(string value)
 {

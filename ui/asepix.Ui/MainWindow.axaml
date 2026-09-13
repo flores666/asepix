@@ -24,9 +24,25 @@
       <Setter Property="Padding" Value="18,9" />
       <Setter Property="CornerRadius" Value="6" />
     </Style>
+    <Style Selector="TextBlock.field">
+      <Setter Property="Foreground" Value="#8a8a9a" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <!-- Spinner off: its two buttons claim the whole control and squeeze the text field
+         down to a few pixels, leaving nowhere to type the number. -->
+    <Style Selector="NumericUpDown.size">
+      <Setter Property="Width" Value="72" />
+      <Setter Property="Minimum" Value="1" />
+      <Setter Property="Maximum" Value="4096" />
+      <Setter Property="ShowButtonSpinner" Value="False" />
+      <Setter Property="FormatString" Value="0" />
+      <Setter Property="Watermark" Value="авто" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+    </Style>
   </Window.Styles>
 
-  <Grid RowDefinitions="Auto,*,Auto" Margin="16">
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="16">
 
     <DockPanel Grid.Row="0" Margin="0,0,0,14">
       <Button Name="OpenButton" DockPanel.Dock="Left" Content="Открыть…" Click="OnOpenClick" />
@@ -37,7 +53,17 @@
                  Text="Перетащите изображение сюда или нажмите «Открыть…»" />
     </DockPanel>
 
-    <Grid Grid.Row="1" ColumnDefinitions="*,14,*">
+    <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="2,0,0,14">
+      <TextBlock Classes="field" Text="Тайлов в листе" />
+      <NumericUpDown Name="SheetTilesInput" Classes="size" Value="1" ValueChanged="OnLayoutChanged" />
+      <TextBlock Classes="field" Text="по стороне" />
+
+      <TextBlock Classes="field" Margin="20,0,0,0" Text="Размер тайла" />
+      <NumericUpDown Name="TileSizeInput" Classes="size" ValueChanged="OnLayoutChanged" />
+      <TextBlock Classes="field" Text="px — квадрат; пусто: размер определённой сетки" />
+    </StackPanel>
+
+    <Grid Grid.Row="2" ColumnDefinitions="*,14,*">
       <Border Grid.Column="0" Classes="panel">
         <DockPanel>
           <TextBlock Name="SourceCaption" DockPanel.Dock="Top" Classes="caption" Text="Оригинал" />
@@ -55,7 +81,7 @@
       </Border>
     </Grid>
 
-    <TextBlock Name="StatusText" Grid.Row="2" Margin="2,14,2,0"
+    <TextBlock Name="StatusText" Grid.Row="3" Margin="2,14,2,0"
                TextWrapping="Wrap" Foreground="#8a8a9a" Text="" />
   </Grid>
 </Window>
