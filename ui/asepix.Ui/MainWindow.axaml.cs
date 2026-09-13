@@ -47,7 +47,7 @@ public partial class MainWindow : Window
         if (await StorageProvider.TryGetFileFromPathAsync(initialFile) is { } file)
             await LoadAsync(file);
         else
-            StatusText.Text = $"Файл не найден: {initialFile}";
+            StatusText.Text = $"File not found: {initialFile}";
     }
 
     private async void OnOpenClick(object? sender, RoutedEventArgs e)
@@ -55,7 +55,7 @@ public partial class MainWindow : Window
         var files = await StorageProvider.OpenFilePickerAsync(
             new FilePickerOpenOptions
             {
-                Title = "Выберите изображение",
+                Title = "Choose an image",
                 AllowMultiple = false,
                 FileTypeFilter = [FilePickerFileTypes.ImageAll],
             }
@@ -73,7 +73,7 @@ public partial class MainWindow : Window
         var file = await StorageProvider.SaveFilePickerAsync(
             new FilePickerSaveOptions
             {
-                Title = "Сохранить пиксель-арт",
+                Title = "Save pixel art",
                 SuggestedFileName = $"{sourceName}_converted.png",
                 DefaultExtension = "png",
                 FileTypeChoices = [FilePickerFileTypes.ImagePng],
@@ -88,11 +88,11 @@ public partial class MainWindow : Window
             await using var stream = await file.OpenWriteAsync();
             await result.SaveAsPngAsync(stream);
 
-            StatusText.Text = $"Сохранено: {file.Name}";
+            StatusText.Text = $"Saved: {file.Name}";
         }
         catch (Exception exception)
         {
-            StatusText.Text = $"Не удалось сохранить: {exception.Message}";
+            StatusText.Text = $"Could not save: {exception.Message}";
         }
     }
 
@@ -124,7 +124,7 @@ public partial class MainWindow : Window
     internal async Task LoadAsync(Stream stream, string name)
     {
         SetBusy(true);
-        StatusText.Text = "Обработка…";
+        StatusText.Text = "Working…";
 
         try
         {
@@ -136,7 +136,7 @@ public partial class MainWindow : Window
             source = loaded;
 
             SourceImage.Source = ToBitmap(source);
-            SourceCaption.Text = $"Оригинал — {source.Width}×{source.Height}";
+            SourceCaption.Text = $"Source — {source.Width}×{source.Height}";
 
             sourceName = Path.GetFileNameWithoutExtension(name);
             HeaderText.Text = name;
@@ -187,7 +187,7 @@ public partial class MainWindow : Window
 
         SetBusy(true);
         SaveButton.IsEnabled = false;
-        StatusText.Text = "Обработка…";
+        StatusText.Text = "Working…";
 
         try
         {
@@ -204,10 +204,10 @@ public partial class MainWindow : Window
             result = converted;
 
             ResultImage.Source = ToBitmap(result);
-            ResultCaption.Text = $"Пиксель-арт — {result.Width}×{result.Height}";
+            ResultCaption.Text = $"Pixel art — {result.Width}×{result.Height}";
             StatusText.Text = options.TileSize is int tile
-                ? $"Лист {options.SheetTiles}×{options.SheetTiles} тайлов по {tile}×{tile} — итог {result.Width}×{result.Height}, палитра 8 цветов."
-                : $"Сетка определена автоматически: {result.Width}×{result.Height}, палитра 8 цветов.";
+                ? $"Sheet of {options.SheetTiles}×{options.SheetTiles} tiles at {tile}×{tile} — {result.Width}×{result.Height} in all, 8-colour palette."
+                : $"Grid detected automatically: {result.Width}×{result.Height}, 8-colour palette.";
 
             SaveButton.IsEnabled = true;
         }
@@ -230,9 +230,9 @@ public partial class MainWindow : Window
     private static string Describe(Exception exception) =>
         exception switch
         {
-            UnknownImageFormatException => "Это не изображение — поддерживаются PNG, JPEG, BMP, GIF, WebP.",
+            UnknownImageFormatException => "That is not an image — PNG, JPEG, BMP, GIF and WebP are supported.",
             InvalidOperationException => exception.Message,
-            _ => $"Не удалось открыть: {exception.Message}",
+            _ => $"Could not open: {exception.Message}",
         };
 
     private static Bitmap ToBitmap(PixelArt image)

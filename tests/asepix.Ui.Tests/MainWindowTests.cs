@@ -88,7 +88,7 @@ public class MainWindowTests
     /// <summary>
     /// Setting a size before opening anything has nothing to convert, and that no-op used to
     /// leave a finished conversion parked as if it were still running — after which every
-    /// later conversion returned at once and the window sat on "Обработка…" for good.
+    /// later conversion returned at once and the window sat on "Working…" for good.
     /// </summary>
     [AvaloniaFact]
     public async Task Setting_ASizeBeforeOpeningAnImage_StillConvertsTheImageOpenedAfterwards()
@@ -170,7 +170,7 @@ public class MainWindowTests
         await window.LoadAsync(new MemoryStream("not an image"u8.ToArray()), "notes.txt");
 
         Assert.False(window.GetControl<Button>("SaveButton").IsEnabled);
-        Assert.Contains("не изображение", window.GetControl<TextBlock>("StatusText").Text);
+        Assert.Contains("not an image", window.GetControl<TextBlock>("StatusText").Text);
     }
 
     /// <summary>

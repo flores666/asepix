@@ -37,7 +37,7 @@
       <Setter Property="Maximum" Value="4096" />
       <Setter Property="ShowButtonSpinner" Value="False" />
       <Setter Property="FormatString" Value="0" />
-      <Setter Property="Watermark" Value="авто" />
+      <Setter Property="Watermark" Value="auto" />
       <Setter Property="HorizontalContentAlignment" Value="Center" />
     </Style>
   </Window.Styles>
@@ -45,35 +45,35 @@
   <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="16">
 
     <DockPanel Grid.Row="0" Margin="0,0,0,14">
-      <Button Name="OpenButton" DockPanel.Dock="Left" Content="Открыть…" Click="OnOpenClick" />
-      <Button Name="SaveButton" DockPanel.Dock="Right" Content="Сохранить PNG"
+      <Button Name="OpenButton" DockPanel.Dock="Left" Content="Open…" Click="OnOpenClick" />
+      <Button Name="SaveButton" DockPanel.Dock="Right" Content="Save PNG"
               IsEnabled="False" Click="OnSaveClick" />
       <TextBlock Name="HeaderText" VerticalAlignment="Center" Margin="16,0"
                  TextTrimming="CharacterEllipsis" Foreground="#c8c8d4"
-                 Text="Перетащите изображение сюда или нажмите «Открыть…»" />
+                 Text="Drop an image here, or press “Open…”" />
     </DockPanel>
 
     <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="2,0,0,14">
-      <TextBlock Classes="field" Text="Тайлов в листе" />
+      <TextBlock Classes="field" Text="Sheet" />
       <NumericUpDown Name="SheetTilesInput" Classes="size" Value="1" ValueChanged="OnLayoutChanged" />
-      <TextBlock Classes="field" Text="по стороне" />
+      <TextBlock Classes="field" Text="tiles per side" />
 
-      <TextBlock Classes="field" Margin="20,0,0,0" Text="Размер тайла" />
+      <TextBlock Classes="field" Margin="20,0,0,0" Text="Tile size" />
       <NumericUpDown Name="TileSizeInput" Classes="size" ValueChanged="OnLayoutChanged" />
-      <TextBlock Classes="field" Text="px — квадрат; пусто: размер определённой сетки" />
+      <TextBlock Classes="field" Text="px square — leave empty to keep the detected grid" />
     </StackPanel>
 
     <Grid Grid.Row="2" ColumnDefinitions="*,14,*">
       <Border Grid.Column="0" Classes="panel">
         <DockPanel>
-          <TextBlock Name="SourceCaption" DockPanel.Dock="Top" Classes="caption" Text="Оригинал" />
+          <TextBlock Name="SourceCaption" DockPanel.Dock="Top" Classes="caption" Text="Source" />
           <Image Name="SourceImage" Stretch="Uniform" />
         </DockPanel>
       </Border>
 
       <Border Grid.Column="2" Classes="panel">
         <DockPanel>
-          <TextBlock Name="ResultCaption" DockPanel.Dock="Top" Classes="caption" Text="Пиксель-арт" />
+          <TextBlock Name="ResultCaption" DockPanel.Dock="Top" Classes="caption" Text="Pixel art" />
           <!-- Nearest-neighbour, or the preview would re-blur exactly what we removed. -->
           <Image Name="ResultImage" Stretch="Uniform"
                  RenderOptions.BitmapInterpolationMode="None" />
