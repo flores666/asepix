@@ -1,0 +1,61 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="asepix.Ui.MainWindow"
+        Title="asepix"
+        Width="1040" Height="680"
+        MinWidth="720" MinHeight="460"
+        DragDrop.AllowDrop="True"
+        Background="#16161a">
+
+  <Window.Styles>
+    <Style Selector="Border.panel">
+      <Setter Property="Background" Value="#1e1e24" />
+      <Setter Property="BorderBrush" Value="#2e2e38" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="12" />
+    </Style>
+    <Style Selector="TextBlock.caption">
+      <Setter Property="Foreground" Value="#8a8a9a" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+    <Style Selector="Button">
+      <Setter Property="Padding" Value="18,9" />
+      <Setter Property="CornerRadius" Value="6" />
+    </Style>
+  </Window.Styles>
+
+  <Grid RowDefinitions="Auto,*,Auto" Margin="16">
+
+    <DockPanel Grid.Row="0" Margin="0,0,0,14">
+      <Button Name="OpenButton" DockPanel.Dock="Left" Content="Открыть…" Click="OnOpenClick" />
+      <Button Name="SaveButton" DockPanel.Dock="Right" Content="Сохранить PNG"
+              IsEnabled="False" Click="OnSaveClick" />
+      <TextBlock Name="HeaderText" VerticalAlignment="Center" Margin="16,0"
+                 TextTrimming="CharacterEllipsis" Foreground="#c8c8d4"
+                 Text="Перетащите изображение сюда или нажмите «Открыть…»" />
+    </DockPanel>
+
+    <Grid Grid.Row="1" ColumnDefinitions="*,14,*">
+      <Border Grid.Column="0" Classes="panel">
+        <DockPanel>
+          <TextBlock Name="SourceCaption" DockPanel.Dock="Top" Classes="caption" Text="Оригинал" />
+          <Image Name="SourceImage" Stretch="Uniform" />
+        </DockPanel>
+      </Border>
+
+      <Border Grid.Column="2" Classes="panel">
+        <DockPanel>
+          <TextBlock Name="ResultCaption" DockPanel.Dock="Top" Classes="caption" Text="Пиксель-арт" />
+          <!-- Nearest-neighbour, or the preview would re-blur exactly what we removed. -->
+          <Image Name="ResultImage" Stretch="Uniform"
+                 RenderOptions.BitmapInterpolationMode="None" />
+        </DockPanel>
+      </Border>
+    </Grid>
+
+    <TextBlock Name="StatusText" Grid.Row="2" Margin="2,14,2,0"
+               TextWrapping="Wrap" Foreground="#8a8a9a" Text="" />
+  </Grid>
+</Window>

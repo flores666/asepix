@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/tests/">
+    <Project Path="tests/asepix.Tests/asepix.Tests.csproj" />
+    <Project Path="tests/asepix.Ui.Tests/asepix.Ui.Tests.csproj" />
+  </Folder>
+  <Folder Name="/ui/">
+    <Project Path="ui/asepix.Ui/asepix.Ui.csproj" />
+  </Folder>
+  <Project Path="asepix.csproj" />
+</Solution>
