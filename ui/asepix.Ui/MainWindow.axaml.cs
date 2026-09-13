@@ -160,7 +160,9 @@ public partial class MainWindow : Window
     internal Task ConvertAsync()
     {
         // Awaiting the call always means "settled", whether it started the work or joined it.
-        if (conversion is { } running)
+        // Only an unfinished conversion absorbs the request: a finished one is last time's,
+        // still parked here because the assignment below lands after the call it stores.
+        if (conversion is { IsCompleted: false } running)
         {
             queued = true;
             return running;
@@ -171,18 +173,11 @@ public partial class MainWindow : Window
 
     private async Task DrainAsync()
     {
-        try
+        do
         {
-            do
-            {
-                queued = false;
-                await ConvertOnceAsync();
-            } while (queued);
-        }
-        finally
-        {
-            conversion = null;
-        }
+            queued = false;
+            await ConvertOnceAsync();
+        } while (queued);
     }
 
     private async Task ConvertOnceAsync()

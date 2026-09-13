@@ -86,6 +86,29 @@ public class MainWindowTests
     }
 
     /// <summary>
+    /// Setting a size before opening anything has nothing to convert, and that no-op used to
+    /// leave a finished conversion parked as if it were still running — after which every
+    /// later conversion returned at once and the window sat on "Обработка…" for good.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Setting_ASizeBeforeOpeningAnImage_StillConvertsTheImageOpenedAfterwards()
+    {
+        var window = new MainWindow();
+        window.Show();
+
+        window.GetControl<NumericUpDown>("TileSizeInput").Value = 6;
+        await window.ConvertAsync();
+
+        await window.LoadAsync(SyntheticArt(), "art.png");
+
+        var status = window.GetControl<TextBlock>("StatusText").Text;
+        var result = window.GetControl<ImageControl>("ResultImage");
+
+        Assert.True(result.Source is not null, $"nothing was converted; status: {status}");
+        Assert.Equal(new PixelSize(6, 6), Assert.IsType<Bitmap>(result.Source).PixelSize);
+    }
+
+    /// <summary>
     /// Converting used to disable the size boxes, which dropped the focus on every keystroke
     /// and made the user click back into the box to type the next digit.
     /// </summary>
