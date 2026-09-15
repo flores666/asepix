@@ -165,6 +165,56 @@ public class ImageConverterTests
         });
     }
 
+    /// <summary>
+    /// A generated sprite arrives centred in a mostly empty canvas. Absence is not a colour:
+    /// the palette is for the art, and transparency must not spend a slot of it — at eight
+    /// colours that is an eighth of the sprite's range gone, and it drags the rest of the
+    /// clusters towards the background besides.
+    /// </summary>
+    [Fact]
+    public void ToPixelArt_SpendsNoPaletteSlotOnTheEmptyCanvas()
+    {
+        var art = BuildArt(16, 16, seed: 55);
+
+        using var upscaled = Upscale(art, 16, 16, 14.3);
+        using var padded = Pad(upscaled, margin: 140);
+        using var recovered = ImageConverter.ToPixelArt(
+            padded,
+            new ConversionOptions(Colors: Palette.Length)
+        );
+
+        var drawn = new HashSet<Rgba32>();
+
+        recovered.ProcessPixelRows(accessor =>
+        {
+            for (var y = 0; y < accessor.Height; y++)
+            {
+                foreach (var pixel in accessor.GetRowSpan(y))
+                {
+                    // Alpha is flat: a pixel is drawn or it is not, never a fraction of one.
+                    Assert.True(pixel.A is 0 or 255, $"alpha {pixel.A}");
+
+                    if (pixel.A == 255)
+                        drawn.Add(pixel);
+                }
+            }
+        });
+
+        // One palette slot per art colour, and none left over for the canvas around it.
+        Assert.Equal(Palette.Length, drawn.Count);
+        Assert.Equal(Palette.Length, drawn.Select(Nearest).Distinct().Count());
+    }
+
+    /// <summary>Surrounds an image with empty canvas, the way a generated sprite arrives.</summary>
+    private static Image<Rgba32> Pad(Image<Rgba32> image, int margin)
+    {
+        var padded = new Image<Rgba32>(image.Width + 2 * margin, image.Height + 2 * margin);
+
+        padded.Mutate(context => context.DrawImage(image, new Point(margin, margin), 1f));
+
+        return padded;
+    }
+
     [Fact]
     public void Validate_RejectsAnEmptySheet()
     {
@@ -199,7 +249,7 @@ public class ImageConverterTests
 
         options.Validate();
 
-        Assert.Equal(8, options.Colors);
+        Assert.Equal(16, options.Colors);
         Assert.Equal(0.25, options.Inset);
     }
 

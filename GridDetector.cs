@@ -25,6 +25,9 @@ public static class GridDetector
     private const double FineWindow = 0.05;
     private const double MinPeriod = 4.0;
 
+    /// <summary>Alpha at or above which a pixel counts as part of the art.</summary>
+    public const byte OpaqueAlpha = 128;
+
     /// <summary>How close to the best fit a coarser period must be to be preferred over it.</summary>
     private const double HarmonicMargin = 0.001;
 
@@ -67,18 +70,56 @@ public static class GridDetector
     }
 
     /// <summary>
-    /// Fits the lattice that best explains the strong edges in <paramref name="energy"/>.
+    /// Recovers the grid of an image, in its own pixel coordinates.
     /// </summary>
     /// <remarks>
+    /// Measured over the opaque content alone. A generated sprite usually arrives centred in
+    /// a mostly empty canvas, and an empty region carries no edges: left in, it contributes
+    /// nothing but a lower threshold, so noise ripples elsewhere pass for grid lines.
+    /// </remarks>
+    public static (Lattice Horizontal, Lattice Vertical) Detect(
+        ReadOnlySpan<Rgba32> pixels,
+        int width,
+        int height
+    )
+    {
+        var (content, left, top, cropWidth, cropHeight) = ContentBox(pixels, width, height);
+
+        var (horizontal, vertical) = Fit(
+            ComputeEdgeEnergy(content, cropWidth, cropHeight, Axis.Horizontal),
+            ComputeEdgeEnergy(content, cropWidth, cropHeight, Axis.Vertical)
+        );
+
+        // Back into full-image coordinates: the lattice keeps its period, and its boundaries
+        // move with the crop.
+        return (
+            horizontal with { Phase = horizontal.Phase + left },
+            vertical with { Phase = vertical.Phase + top }
+        );
+    }
+
+    /// <summary>
+    /// Fits the lattice pair that best explains the strong edges in both energy profiles.
+    /// </summary>
+    /// <remarks>
+    /// One period for both axes: an art pixel is square, however lopsided the grid it fills.
+    /// Fitting each axis on its own lets a marginal reading of one of them — a half-period
+    /// harmonic is only a hair worse than the truth on a soft image — settle that axis alone,
+    /// and the result comes out with the wrong aspect ratio. Scored together, the axis that
+    /// does see the grid clearly carries the one the noise is drowning.
+    ///
     /// The residual is normalised by the period. Without that, shrinking the period
     /// trivially shrinks the residual (it is bounded by half a period) and the search
     /// collapses towards <see cref="MinPeriod"/> instead of finding the real grid.
     /// </remarks>
-    public static Lattice Fit(double[] energy)
+    public static (Lattice Horizontal, Lattice Vertical) Fit(
+        double[] horizontalEnergy,
+        double[] verticalEnergy
+    )
     {
-        var peaks = FindStrongPeaks(energy);
+        var peaks = new[] { FindStrongPeaks(horizontalEnergy), FindStrongPeaks(verticalEnergy) };
 
-        if (peaks.Count < 4)
+        if (peaks.Any(axis => axis.Count < 4))
         {
             throw new InvalidOperationException(
                 "Could not detect a pixel grid: the image has too few distinct edges. "
@@ -86,19 +127,21 @@ public static class GridDetector
             );
         }
 
-        var maxPeriod = energy.Length / 6.0;
+        var maxPeriod = Math.Min(horizontalEnergy.Length, verticalEnergy.Length) / 6.0;
 
         if (maxPeriod <= MinPeriod)
             throw new InvalidOperationException("Image is too small to detect a pixel grid.");
 
         var coarse = Search(peaks, MinPeriod, maxPeriod, CoarseStep);
 
-        return Search(
+        var (period, phases) = Search(
             peaks,
             Math.Max(MinPeriod, coarse.Period - FineWindow),
             Math.Min(maxPeriod, coarse.Period + FineWindow),
             FineStep
         );
+
+        return (new Lattice(period, phases[0]), new Lattice(period, phases[1]));
     }
 
     /// <summary>
@@ -154,40 +197,66 @@ public static class GridDetector
     /// Every sub-multiple of the true period also puts each grid line on a lattice point,
     /// so it fits at least as well and the plain minimum lands on the smallest harmonic.
     /// Normalising by the period penalises sub-multiples whenever edges are soft, but on
-    /// a crisp grid the residuals are zero and they tie exactly — so take the coarsest fit
-    /// among the near-minimal ones rather than the first.
+    /// a crisp grid the residuals are zero and they tie exactly — so a near-minimal multiple
+    /// of the best fit is preferred to it. Only an exact multiple: any coarser period within
+    /// the margin would do on a soft image, and the fit would creep a few percent coarse,
+    /// spreading the grid lines off the art pixels they are meant to land on.
     /// </remarks>
-    private static Lattice Search(List<int> peaks, double from, double to, double step)
+    private static (double Period, double[] Phases) Search(
+        List<int>[] peaks,
+        double from,
+        double to,
+        double step
+    )
     {
-        var candidates = new List<(double Period, double Phase, double Cost)>();
+        var candidates = new List<(double Period, double[] Phases, double Cost)>();
 
         for (var period = from; period <= to; period += step)
         {
-            var bestPhase = 0.0;
-            var bestCost = double.MaxValue;
+            var phases = new double[peaks.Length];
+            var cost = 0.0;
 
-            for (var i = 0; i < PhaseSamples; i++)
+            for (var axis = 0; axis < peaks.Length; axis++)
             {
-                var phase = period * i / PhaseSamples;
-                var cost = MeanAbsResidual(peaks, period, phase) / period;
+                var bestCost = double.MaxValue;
 
-                if (cost < bestCost)
+                for (var i = 0; i < PhaseSamples; i++)
                 {
-                    bestCost = cost;
-                    bestPhase = phase;
+                    var phase = period * i / PhaseSamples;
+                    var axisCost = MeanAbsResidual(peaks[axis], period, phase) / period;
+
+                    if (axisCost < bestCost)
+                    {
+                        bestCost = axisCost;
+                        phases[axis] = phase;
+                    }
                 }
+
+                cost += bestCost / peaks.Length;
             }
 
-            candidates.Add((period, bestPhase, bestCost));
+            candidates.Add((period, phases, cost));
         }
 
         if (candidates.Count == 0)
             throw new InvalidOperationException("Image is too small to detect a pixel grid.");
 
-        var floor = candidates.Min(candidate => candidate.Cost) + HarmonicMargin;
-        var chosen = candidates.Last(candidate => candidate.Cost <= floor);
+        var best = candidates.MinBy(candidate => candidate.Cost);
+        var floor = best.Cost + HarmonicMargin;
+        var chosen = best;
 
-        return new Lattice(chosen.Period, chosen.Phase);
+        for (var multiple = 2; ; multiple++)
+        {
+            var index = (int)Math.Round((best.Period * multiple - from) / step);
+
+            if (index >= candidates.Count)
+                break;
+
+            if (candidates[index].Cost <= floor)
+                chosen = candidates[index];
+        }
+
+        return (chosen.Period, chosen.Phases);
     }
 
     private static double MeanAbsResidual(List<int> peaks, double period, double phase)
@@ -222,6 +291,51 @@ public static class GridDetector
         }
 
         return peaks;
+    }
+
+    /// <summary>
+    /// The pixels inside the image's opaque bounding box, and where that box sits. A fully
+    /// opaque image is its own content box.
+    /// </summary>
+    private static (Rgba32[] Pixels, int Left, int Top, int Width, int Height) ContentBox(
+        ReadOnlySpan<Rgba32> pixels,
+        int width,
+        int height
+    )
+    {
+        int left = width,
+            top = height,
+            right = -1,
+            bottom = -1;
+
+        for (var y = 0; y < height; y++)
+        {
+            var row = y * width;
+
+            for (var x = 0; x < width; x++)
+            {
+                if (pixels[row + x].A < OpaqueAlpha)
+                    continue;
+
+                left = Math.Min(left, x);
+                right = Math.Max(right, x);
+                top = Math.Min(top, y);
+                bottom = Math.Max(bottom, y);
+            }
+        }
+
+        if (right < left || bottom < top)
+            throw new InvalidOperationException("Image is fully transparent: nothing to convert.");
+
+        int cropWidth = right - left + 1,
+            cropHeight = bottom - top + 1;
+
+        var content = new Rgba32[cropWidth * cropHeight];
+
+        for (var y = 0; y < cropHeight; y++)
+            pixels.Slice((top + y) * width + left, cropWidth).CopyTo(content.AsSpan(y * cropWidth));
+
+        return (content, left, top, cropWidth, cropHeight);
     }
 
     private static double Difference(Rgba32 a, Rgba32 b) =>

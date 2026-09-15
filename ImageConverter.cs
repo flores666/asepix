@@ -26,7 +26,7 @@ public sealed record ConversionOptions(
     int? GridHeight = null,
     int SheetTiles = 1,
     int? TileSize = null,
-    int Colors = 8,
+    int Colors = 16,
     double Inset = 0.25
 )
 {
@@ -65,23 +65,28 @@ public static class ImageConverter
         var pixels = new Rgba32[width * height];
         source.CopyPixelDataTo(pixels);
 
-        var xBounds = BoundsFor(options.GridWidth, pixels, width, height, Axis.Horizontal);
-        var yBounds = BoundsFor(options.GridHeight, pixels, width, height, Axis.Vertical);
+        var (xBounds, yBounds) = Bounds(options, pixels, width, height);
 
         var xRanges = SampleRanges(xBounds, options.Inset, width);
         var yRanges = SampleRanges(yBounds, options.Inset, height);
 
-        var (samples, offsets) = CollectInteriors(pixels, width, xRanges, yRanges);
+        var (samples, offsets, interiors) = CollectInteriors(pixels, width, xRanges, yRanges);
 
-        // The palette is built from cell interiors alone. Feeding it the whole image lets the
-        // anti-aliased ramps — a large share of the area on a heavily upscaled picture — win
-        // palette slots, and those blends then leak straight into the output.
-        var (indices, palette) = Quantize(samples, options.Colors);
+        // The palette is built from opaque cell interiors alone. Feeding it the whole image
+        // lets the anti-aliased ramps — a large share of the area on a heavily upscaled
+        // picture — win palette slots, and those blends then leak straight into the output;
+        // feeding it the empty canvas a generated sprite floats in spends slots, and pulls
+        // Wu's clusters, on a colour that is really just absence.
+        var (indices, colours) = Quantize(samples, options.Colors);
+
+        // One slot past the palette stands for an empty cell.
+        var palette = (Rgba32[])[.. colours, default];
+        var empty = colours.Length;
 
         int cellsX = xRanges.Length,
             cellsY = yRanges.Length;
 
-        var cells = new byte[cellsX * cellsY];
+        var cells = new int[cellsX * cellsY];
         var counts = new int[palette.Length];
 
         for (var cell = 0; cell < cells.Length; cell++)
@@ -91,7 +96,11 @@ public static class ImageConverter
             for (var i = offsets[cell]; i < offsets[cell + 1]; i++)
                 counts[indices[i]]++;
 
-            cells[cell] = (byte)Winner(counts);
+            // A cell is part of the art only if most of it is: alpha comes out flat, the way
+            // a pixel either is drawn or is not.
+            counts[empty] = interiors[cell] - (offsets[cell + 1] - offsets[cell]);
+
+            cells[cell] = Winner(counts);
         }
 
         var xSpans = TileSpans(cellsX, options.SheetTiles, options.TileSize);
@@ -111,7 +120,7 @@ public static class ImageConverter
     /// larger one repeats them, the way a pixel is meant to grow.
     /// </summary>
     private static Rgba32[] Rescale(
-        byte[] cells,
+        int[] cells,
         int cellsX,
         (int Start, int End)[] xSpans,
         (int Start, int End)[] ySpans,
@@ -209,10 +218,15 @@ public static class ImageConverter
     }
 
     /// <summary>
-    /// Gathers every cell's interior pixels into one contiguous run, cell by cell, so the
-    /// palette and the per-cell votes read the same samples.
+    /// Gathers every cell's opaque interior pixels into one contiguous run, cell by cell, so
+    /// the palette and the per-cell votes read the same samples, and reports how large each
+    /// interior was so a cell can tell how much of it was empty.
     /// </summary>
-    private static (Rgba32[] Samples, int[] Offsets) CollectInteriors(
+    /// <remarks>
+    /// Samples carry full alpha whatever they arrived with, so the quantiser clusters on
+    /// colour rather than on how faded the edge of a sprite is.
+    /// </remarks>
+    private static (Rgba32[] Samples, int[] Offsets, int[] Interiors) CollectInteriors(
         ReadOnlySpan<Rgba32> pixels,
         int width,
         (int Start, int End)[] xRanges,
@@ -220,19 +234,9 @@ public static class ImageConverter
     )
     {
         var offsets = new int[xRanges.Length * yRanges.Length + 1];
+        var interiors = new int[xRanges.Length * yRanges.Length];
+        var samples = new List<Rgba32>();
         var cell = 0;
-
-        foreach (var (top, bottom) in yRanges)
-        {
-            foreach (var (left, right) in xRanges)
-            {
-                offsets[cell + 1] = offsets[cell] + (bottom - top) * (right - left);
-                cell++;
-            }
-        }
-
-        var samples = new Rgba32[offsets[^1]];
-        var at = 0;
 
         foreach (var (top, bottom) in yRanges)
         {
@@ -241,38 +245,59 @@ public static class ImageConverter
                 for (var y = top; y < bottom; y++)
                 {
                     var row = y * width;
+
                     for (var x = left; x < right; x++)
-                        samples[at++] = pixels[row + x];
+                    {
+                        var pixel = pixels[row + x];
+
+                        if (pixel.A >= GridDetector.OpaqueAlpha)
+                            samples.Add(new Rgba32(pixel.R, pixel.G, pixel.B));
+                    }
                 }
+
+                interiors[cell] = (bottom - top) * (right - left);
+                offsets[cell + 1] = samples.Count;
+                cell++;
             }
         }
 
-        return (samples, offsets);
+        return ([.. samples], offsets, interiors);
     }
 
-    private static double[] BoundsFor(
-        int? requested,
+    /// <summary>
+    /// Cell boundaries along both axes. Detection is one fit over both energy profiles —
+    /// an art pixel is square — so it runs once, and only when an axis was left to it.
+    /// </summary>
+    private static (double[] X, double[] Y) Bounds(
+        ConversionOptions options,
         ReadOnlySpan<Rgba32> pixels,
         int width,
-        int height,
-        Axis axis
+        int height
     )
     {
-        var length = axis == Axis.Horizontal ? width : height;
+        if (options.GridWidth is int columns && options.GridHeight is int rows)
+            return (
+                GridDetector.UniformBounds(columns, width),
+                GridDetector.UniformBounds(rows, height)
+            );
 
-        if (requested is int cells)
-            return GridDetector.UniformBounds(cells, length);
+        var (horizontal, vertical) = GridDetector.Detect(pixels, width, height);
 
-        var energy = GridDetector.ComputeEdgeEnergy(pixels, width, height, axis);
-
-        return GridDetector.CellBounds(GridDetector.Fit(energy), length);
+        return (
+            options.GridWidth is int cells
+                ? GridDetector.UniformBounds(cells, width)
+                : GridDetector.CellBounds(horizontal, width),
+            options.GridHeight is int lines
+                ? GridDetector.UniformBounds(lines, height)
+                : GridDetector.CellBounds(vertical, height)
+        );
     }
 
     /// <summary>Maps every sample to an index into a shared palette.</summary>
     private static (byte[] Indices, Rgba32[] Palette) Quantize(Rgba32[] samples, int colors)
     {
         if (samples.Length == 0)
-            throw new InvalidOperationException("Detected grid has no pixels to sample.");
+            throw new InvalidOperationException("Detected grid has no opaque pixels to sample.");
 
         // Dithering scatters pixels between palette entries, which is exactly the noise
         // the vote is meant to remove — it must stay off.

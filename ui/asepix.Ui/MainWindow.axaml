@@ -61,6 +61,10 @@
       <TextBlock Classes="field" Margin="20,0,0,0" Text="Tile size" />
       <NumericUpDown Name="TileSizeInput" Classes="size" ValueChanged="OnLayoutChanged" />
       <TextBlock Classes="field" Text="px square — leave empty to keep the detected grid" />
+
+      <TextBlock Classes="field" Margin="20,0,0,0" Text="Colours" />
+      <NumericUpDown Name="ColorsInput" Classes="size" Value="16" Minimum="2" Maximum="256"
+                     Watermark="" ValueChanged="OnLayoutChanged" />
     </StackPanel>
 
     <Grid Grid.Row="2" ColumnDefinitions="*,14,*">

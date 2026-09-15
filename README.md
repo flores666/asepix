@@ -34,8 +34,8 @@ dotnet run --project ui/asepix.Ui
 ```
 
 Drop an image in, set the two sizes, save the PNG. The result pane scales
-nearest-neighbour, so what you see is what you get. It converts with the default
-8-colour palette — reach for the command line when a sheet needs more than that.
+nearest-neighbour, so what you see is what you get. Set the palette size alongside them: a
+generated sprite usually needs more than the handful of colours it looks like it has.
 
 ![](docs/window.png)
 
@@ -52,7 +52,7 @@ asepix <input> [options]
     --grid <W>x<H>   Grid read out of the source; detected from the image when omitted
     --sheet <n>      Tiles along each side of the sheet (default: 1)
     --tile <n>       Side of one tile in pixels; every tile is rescaled to it
-    --colors <n>     Palette size, 2-256 (default: 8)
+    --colors <n>     Palette size, 2-256 (default: 16)
     --inset <f>      Cell fraction trimmed before voting, 0-0.49 (default: 0.25)
 ```
 

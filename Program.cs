@@ -14,7 +14,7 @@ if (args.Length == 0 || args[0] is "-h" or "--help")
               --grid <W>x<H>   Grid read out of the source; detected from the image when omitted
               --sheet <n>      Tiles along each side of the sheet (default: 1)
               --tile <n>       Side of one tile in pixels; every tile is rescaled to it
-              --colors <n>     Palette size, 2-256 (default: 8)
+              --colors <n>     Palette size, 2-256 (default: 16)
               --inset <f>      Cell fraction trimmed before voting, 0-0.49 (default: 0.25)
         """
     );

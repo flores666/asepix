@@ -193,7 +193,8 @@ public partial class MainWindow : Window
         {
             var options = new ConversionOptions(
                 SheetTiles: (int?)SheetTilesInput.Value ?? 1,
-                TileSize: (int?)TileSizeInput.Value
+                TileSize: (int?)TileSizeInput.Value,
+                Colors: (int?)ColorsInput.Value ?? new ConversionOptions().Colors
             );
 
             // Detection and voting take about a second on a large image; the UI thread
@@ -206,8 +207,8 @@ public partial class MainWindow : Window
             ResultImage.Source = ToBitmap(result);
             ResultCaption.Text = $"Pixel art — {result.Width}×{result.Height}";
             StatusText.Text = options.TileSize is int tile
-                ? $"Sheet of {options.SheetTiles}×{options.SheetTiles} tiles at {tile}×{tile} — {result.Width}×{result.Height} in all, 8-colour palette."
-                : $"Grid detected automatically: {result.Width}×{result.Height}, 8-colour palette.";
+                ? $"Sheet of {options.SheetTiles}×{options.SheetTiles} tiles at {tile}×{tile} — {result.Width}×{result.Height} in all, {options.Colors}-colour palette."
+                : $"Grid detected automatically: {result.Width}×{result.Height}, {options.Colors}-colour palette.";
 
             SaveButton.IsEnabled = true;
         }
